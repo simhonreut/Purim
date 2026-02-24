@@ -31,7 +31,7 @@
     .family-name{font-weight:700}
     .muted{color:var(--muted);font-size:14px}
     .no-image{
-      height:180px;display:flex;align-items:center;justify-content:center;background:#eee;color:#444;font-weight:600
+      height:0; /* אין מקום לתמונה — מראים רק את השם והכפתור */
     }
 
     /* מסך הזדהות */
@@ -58,6 +58,9 @@
     .toast{position:fixed;bottom:16px;inset-inline:0;display:flex;justify-content:center;z-index:80;pointer-events:none}
     .toast .msg{background:#111;color:#fff;padding:10px 14px;border-radius:999px;box-shadow:var(--shadow);opacity:.96;font-size:14px}
     footer{margin-top:22px;text-align:center;color:var(--muted);font-size:13px}
+
+    /* באנר שגיאה גלובלי (אם משהו נשבר) */
+    .fatal{position:fixed;top:0;inset-inline:0;background:#b00020;color:#fff;padding:10px 14px;z-index:1000;display:none}
   </style>
 </head>
 <body>
@@ -69,7 +72,8 @@
         <h2>ברוכים הבאים לתחרות התחפושות הגדולה 🎭</h2>
         <p>לפני שמתחילים – מלאו שם פרטי ושם משפחה. המשפחה שלכם לא תופיע ברשימת הדירוג.</p>
       </header>
-      <form id="loginForm" class="form">
+      <!-- חיבור ישיר לפונקציה: אין סיכוי ש"לא יתחבר" -->
+      <form id="loginForm" class="form" onsubmit="return handleLoginSubmit(event)" novalidate>
         <div class="field">
           <label for="firstName">שם פרטי</label>
           <input id="firstName" required placeholder="למשל: רעות" autocomplete="off" />
@@ -80,7 +84,7 @@
         </div>
         <div class="actions">
           <button type="submit" class="primary">כניסה</button>
-          <button type="button" class="ghost" id="resetLocalBtn" title="איפוס הדפדפן הנוכחי בלבד">איפוס נתונים מקומי</button>
+          <button type="button" class="ghost" id="resetLocalBtn" onclick="onResetLocal()">איפוס נתונים מקומי</button>
         </div>
         <div id="loginError" class="error" style="display:none"></div>
         <div class="hint">* המידע נשמר באופן מקומי בדפדפן שלך.</div>
@@ -97,8 +101,8 @@
     <div class="toolbar">
       <div id="userBadge" class="user-badge" style="display:none"></div>
       <div style="display:flex;gap:10px">
-        <button id="showWinnerBtn" class="primary">הצג את המשפחה המנצחת 🏆</button>
-        <button id="showTotalsBtn" class="ghost" title="הצג/הסתר מצטבר מתחת לכרטיס">הצג/הסתר ניקוד מצטבר</button>
+        <button id="showWinnerBtn" class="primary" onclick="showWinner()">הצג את המשפחה המנצחת 🏆</button>
+        <button id="showTotalsBtn" class="ghost" onclick="toggleTotals()" title="הצג/הסתר מצטבר מתחת לכרטיס">הצג/הסתר ניקוד מצטבר</button>
       </div>
     </div>
 
@@ -112,7 +116,7 @@
     <div class="sheet" role="document">
       <header>
         <h3 id="modalTitle">ניקוד למשפחה</h3>
-        <button class="x" id="closeModalBtn" aria-label="סגירה">✕</button>
+        <button class="x" id="closeModalBtn" aria-label="סגירה" onclick="closeRatingModal()">✕</button>
       </header>
 
       <div class="score-grid">
@@ -126,8 +130,8 @@
       <div class="total-box">סה״כ ייחשב כסכום של שלושת הקטגוריות.</div>
 
       <div class="actions">
-        <button id="submitScoreBtn" class="primary">שלח ניקוד</button>
-        <button id="cancelScoreBtn" class="ghost">ביטול</button>
+        <button id="submitScoreBtn" class="primary" onclick="submitScore()">שלח ניקוד</button>
+        <button id="cancelScoreBtn" class="ghost" onclick="closeRatingModal()">ביטול</button>
       </div>
       <div id="scoreError" class="error" style="display:none"></div>
     </div>
@@ -135,15 +139,13 @@
 
   <!-- טוסט -->
   <div id="toast" class="toast" style="display:none"><div class="msg">נשמר!</div></div>
+  <div id="fatal" class="fatal"></div>
 
   <script>
     /***************
      * תצורה כללית *
      ***************/
-    const USE_FIREBASE = false; // השאירו false אם אינכם משתמשים ב-Firebase כרגע
-    const FIREBASE_CONFIG = {}; // לא בשימוש כרגע
-
-    // רשימת המשפחות (שמות בלבד; תמונות יגיעו מתחת בקובץ דרך IMAGE_DATA)
+    // רשימת המשפחות (שמות בלבד; תמונות יגיעו מאובייקט IMAGE_DATA בסוף הקובץ)
     const FAMILIES = [
       { id: 'fam_cohen',   lastName: 'כהן',   displayName: 'משפחת כהן' },
       { id: 'fam_levi',    lastName: 'לוי',   displayName: 'משפחת לוי' },
@@ -158,13 +160,13 @@
     const LS_KEYS = { USER: 'contest_user', RATINGS: 'contest_ratings' };
 
     function saveUserToSession(user){
-      sessionStorage.setItem(LS_KEYS.USER, JSON.stringify(user));
+      try { sessionStorage.setItem(LS_KEYS.USER, JSON.stringify(user)); } catch(_){}
     }
     function getUserFromSession(){
       try { return JSON.parse(sessionStorage.getItem(LS_KEYS.USER) || 'null'); }
       catch(_){ return null; }
     }
-    function clearLocal(){
+    function onResetLocal(){
       localStorage.removeItem(LS_KEYS.RATINGS);
       showToast('ניקית את הנתונים המקומיים של הדפדפן');
     }
@@ -194,29 +196,13 @@
       el.style.display = 'flex';
       setTimeout(()=>{ el.style.display = 'none'; }, 1800);
     }
-
-    /*******************
-     * Firebase (כבוי)
-     *******************/
-    let _fb = { app:null, db:null };
-    function initFirebaseIfNeeded(){
-      if(!USE_FIREBASE) return;
-      if(!window.firebase || !window.firebase.firestore){
-        console.error('יש להוסיף סקריפטי Firebase ולמלא קונפיג כדי להשתמש בשיתוף ניקוד.');
-        return;
-      }
-      _fb.app = firebase.initializeApp(FIREBASE_CONFIG);
-      _fb.db = firebase.firestore();
+    function showFatal(text){
+      const el = $('#fatal');
+      el.textContent = text;
+      el.style.display = 'block';
     }
-    async function addRatingFirebase(r){
-      const col = _fb.db.collection('ratings');
-      const key = `${r.ratedFamilyId}__${(r.raterFamily||'').toLowerCase()}__${(r.raterFirst||'').toLowerCase()}`;
-      await col.doc(key).set(r, { merge:true });
-    }
-    async function fetchAllRatingsFirebase(){
-      const snap = await _fb.db.collection('ratings').get();
-      return snap.docs.map(d => d.data());
-    }
+    // אם יש שגיאת JS שלא צפינו – נראה אותה למעלה בבאנר
+    window.addEventListener('error', (e)=> showFatal('שגיאת JavaScript: ' + (e.message || e)));
 
     /*******************
      * UI: בניית כרטיסיות משפחות
@@ -236,7 +222,7 @@
       const grid = $('#familiesGrid');
       grid.innerHTML = '';
 
-      // חברו תמונות מהמפה שבסוף הקובץ (IMAGE_DATA)
+      // חיבור תמונות מהמפה (בסוף הקובץ)
       const withImages = FAMILIES.map(f => ({
         ...f,
         imageData: (window.IMAGE_DATA && window.IMAGE_DATA[f.id]) || ''
@@ -254,10 +240,9 @@
         const card = document.createElement('article');
         card.className = 'card';
 
-        // אם יש תמונה תקינה — נציג <img>, אחרת נראה רק שם וכפתור "דרגו"
         let mediaHtml = '';
         if (isValidDataUrl(f.imageData)) {
-          mediaHtml = `<img src="${f.imageData}" alt="${f.displayName}"aHtml = `<div class="no-image" aria-hidden="true">ללא תמונה</div>`;
+          mediaHtml = `<img src="${f.imageData}" alt="${f.displayName}" onclick`<div class="no-image" aria-hidden="true"></div>`;
         }
 
         card.innerHTML = `
@@ -266,16 +251,10 @@
             <div class="family-name">${f.displayName}</div>
             <div class="muted" data-total="${f.id}" style="display:${SHOW_TOTALS?'block':'none'}">ניקוד מצטבר: —</div>
             <div>
-              <button class="primary" data-rate="${f.id}" style="width:100%">דרגו</button>
+              <button class="primary" style="width:100%" onclick="openRatingModalById('${f.id}')">דרגו</button>
             </div>
           </div>
         `;
-
-        // אירועי פתיחת דירוג
-        const img = card.querySelector('img');
-        const rateBtn = card.querySelector('[data-rate]');
-        if (img) img.addEventListener('click', () => openRatingModal(f));
-        rateBtn.addEventListener('click', () => openRatingModal(f));
 
         grid.appendChild(card);
       });
@@ -283,6 +262,11 @@
       if(SHOW_TOTALS){
         refreshTotalsUI();
       }
+    }
+
+    function openRatingModalById(fid){
+      const fam = FAMILIES.find(x => x.id === fid);
+      if (fam) openRatingModal(fam);
     }
 
     function toggleTotals(){
@@ -357,11 +341,8 @@
       };
 
       try{
-        if(USE_FIREBASE && _fb.db){
-          await addRatingFirebase(rating);
-        }else{
-          saveLocalRating(rating);
-        }
+        // רק מקומי
+        saveLocalRating(rating);
         closeRatingModal();
         showToast('הניקוד נשמר! תודה 🌟');
         if(SHOW_TOTALS) refreshTotalsUI();
@@ -375,13 +356,8 @@
     /*******************
      * חישוב מצטבר וזוכה
      *******************/
-    async function gatherAllRatings(){
-      if(USE_FIREBASE && _fb.db){
-        return await fetchAllRatingsFirebase();
-      }else{
-        return loadLocalRatings();
-      }
-    }
+    async function gatherAllRatings(){ return loadLocalRatings(); }
+
     async function computeTotals(){
       const ratings = await gatherAllRatings();
       const totals = {};
@@ -392,6 +368,7 @@
       });
       return totals;
     }
+
     async function showWinner(){
       const totals = await computeTotals();
       const entries = Object.entries(totals);
@@ -422,17 +399,20 @@
     }
 
     /*******************
-     * כניסה והפעלה
+     * כניסה
      *******************/
     function handleLoginSubmit(ev){
-      ev.preventDefault();
+      // תמיד נבטל ברירת מחדל כדי לא יהיה רענון דף
+      if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+
       const firstName = norm($('#firstName').value);
       const familyName = norm($('#familyName').value);
       const err = $('#loginError');
       err.style.display='none';
 
       if(!firstName || !familyName){
-        err.textContent = 'נא למלא שם פרטי ושם משפחה.'; err.style.display='block'; return;
+        err.textContent = 'נא למלא שם פרטי ושם משפחה.'; err.style.display='block';
+        return false; // לעצור שליחה
       }
 
       CURRENT_USER = { firstName, familyName };
@@ -442,58 +422,38 @@
       $('#loginOverlay').style.display = 'none';
       renderUserBadge();
       renderFamilies();
+
+      return false; // חשוב! מונע שליחה/ריענון גם אם משהו אחר מנסה
     }
 
-    function restoreUser(){
-      const u = getUserFromSession();
-      if(u && u.firstName && u.familyName){
-        CURRENT_USER = u;
-        $('#loginOverlay').style.display = 'none';
-      }
-    }
-
-    window.addEventListener('DOMContentLoaded', () => {
-      try {
-        initFirebaseIfNeeded();
-
-        restoreUser();
+    /*******************
+     * אתחול ראשוני
+     *******************/
+    (function init(){
+      try{
+        const u = getUserFromSession();
+        if(u && u.firstName && u.familyName){
+          CURRENT_USER = u;
+          $('#loginOverlay').style.display = 'none';
+        }
         renderUserBadge();
         renderFamilies();
-
-        // אירועים
-        const loginForm = $('#loginForm');
-        if (loginForm) loginForm.addEventListener('submit', handleLoginSubmit);
-        $('#resetLocalBtn').addEventListener('click', () => {
-          if(confirm('לאפס את הנתונים המקומיים בדפדפן (לא כולל Firebase)?')) clearLocal();
-        });
-
-        $('#showWinnerBtn').addEventListener('click', showWinner);
-        $('#showTotalsBtn').addEventListener('click', toggleTotals);
-
-        $('#submitScoreBtn').addEventListener('click', submitScore);
-        $('#cancelScoreBtn').addEventListener('click', closeRatingModal);
-        $('#closeModalBtn').addEventListener('click', closeRatingModal);
-
-        // סגירת מודאל בלחיצה מחוץ
-        $('#ratingModal').addEventListener('click', (e)=>{
-          if(e.target.id === 'ratingModal') closeRatingModal();
-        });
-      } catch (e) {
+      }catch(e){
         console.error('Fatal init error:', e);
-        alert('אירעה שגיאה בהפעלת הדף. בדקו את הקונסול (F12 → Console).');
+        showFatal('אירעה שגיאה בהפעלת הדף. רעננו את העמוד.');
       }
-    });
+    })();
   </script>
 
   <!-- ============================================================
        הדביקו כאן את מיקומי התמונות כ-Data URL (Base64), אחד אחרי השני
        מבנה: מפתח הוא ה-id של המשפחה (למעלה ב-FAMILIES)
        דוגמה: 'fam_cohen': 'data:image/png;base64,iVBORw0K...'
-       אם תשאירו מחרוזת ריקה או לא תגדירו — יוצג רק שם המשפחה.
+       אם תשאירו ריק — יוצג רק שם המשפחה ללא תמונה.
        ============================================================ -->
   <script>
     window.IMAGE_DATA = {
-      'fam_cohen':   '', // הדביקו כאן את data:image/...;base64, לכל משפחה שרוצים
+      'fam_cohen':   '', // data:image/...;base64,....
       'fam_levi':    '',
       'fam_mizrahi': '',
       'fam_peretz':  '',
@@ -502,3 +462,4 @@
   </script>
 </body>
 </html>
+``
