@@ -235,10 +235,7 @@
     });
     return totals;
   }
-// ⬇️ 2.3 איפוס כל הדירוגים של האירוע ב-Firestore
-async function resetAllScores(){
-  const sure = confirm('לאשר מחיקת כל הדירוגים של האירוע? הפעולה בלתי הפיכה.');
-  if (!sure) return;
+
 
   try{
     const q = query(RATINGS_COL, where("eventId","==", EVENT_ID));
@@ -527,6 +524,7 @@ window.resetAllScores = resetAllScores; // נחשוף לגלובלי כי הכפ
   </script>
 </body>
 </html>
+
 
 
 
