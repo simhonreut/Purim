@@ -96,9 +96,7 @@
         <button class="primary" onclick="showWinner()">הצג את המשפחה המנצחת 🏆</button>
         
 !-- ⬇️ חדש: כפתור איפוס (מוסתר כברירת מחדל, יוצג עם ?admin=1 ב-URL) -->
-    <button id="resetBtn" class="ghost" style="display:none" onclick="resetAllScores()">
-      איפוס ניקוד (אדמין)
-    </button>
+        <button id="resetBtn" class="ghost" style="display:none" onclick="resetAllScores()">איפוס ניקוד (אדמין)</button>
 
         <button class="ghost" onclick="toggleTotals()" title="הצג/הסתר מצטבר מתחת לכרטיס">הצג/הסתר ניקוד מצטבר</button>
       </div>
@@ -144,7 +142,7 @@
    ***************/
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
-    getFirestore, collection, addDoc, getDocs, query, where, deleteDoc
+    getFirestore, collection, addDoc, getDocs, query, where, doc, deleteDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   // 👇 החליפי כאן בפרטי הפרויקט שלך:
@@ -236,27 +234,7 @@
     return totals;
   }
 
-
-  try{
-    const q = query(RATINGS_COL, where("eventId","==", EVENT_ID));
-    const snap = await getDocs(q);
-
-    let count = 0;
-    const deletions = [];
-    snap.forEach(d => {
-      deletions.push(deleteDoc(doc(db, "ratings", d.id)));
-      count++;
-    });
-    await Promise.all(deletions);
-
-    showToast(`נמחקו ${count} דירוגים מהאירוע`);
-    if (SHOW_TOTALS) await refreshTotalsUI();
-  }catch(err){
-    console.error(err);
-    alert('שגיאה במחיקת הדירוגים. בדקו הרשאות (Rules) ונסו שוב.');
-  }
-}
-window.resetAllScores = resetAllScores; // לחשיפה לבלחיצת הכפתור
+  לחשיפה לבלחיצת הכפתור
   /***************
    * UI: רינדור משפחות
    ***************/
@@ -473,7 +451,7 @@ window.resetAllScores = resetAllScores; // לחשיפה לבלחיצת הכפת�
 async function resetAllScores(){
   const sure = confirm('לאשר מחיקת כל הדירוגים של האירוע? הפעולה בלתי הפיכה.');
   if (!sure) return;
-
+  
   try{
     // נטען את כל המסמכים תחת הקולקציה "ratings" של האירוע הנוכחי
     const q = query(RATINGS_COL, where("eventId","==", EVENT_ID));
@@ -515,15 +493,23 @@ async function resetAllScores(){
   <script>
 
     window.IMAGE_DATA = {
-      'fam_cohen':   '', // data:image/png;base64,....
-      'fam_levi':    '',
-      'fam_mizrahi': '',
-      'fam_peretz':  '',
-      'fam_azulay':  ''
+     
+   'fam_simhon':   '', // data:image/png;base64,....
+    'fam_keren':    '',
+    'fam_weiss':    '',
+    'fam_mirovich': '',
+    'fam_yaakov':   '',
+    'fam_mano':     '',
+    'fam_manods':   '',
+    'fam_arpi':     '',
+    'fam_weissn':   '',
+    'fam_sher':     ''
+
     };
   </script>
 </body>
 </html>
+
 
 
 
