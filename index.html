@@ -469,8 +469,9 @@ async function resetAllScores(){
     alert('שגיאה במחיקת הדירוגים. בדקו הרשאות (Rules) ונסו שוב.');
   }
 }
+    
 //נחשוף לגלובלי כי הכפתור קורא לזה  
-ndow.resetAllScores = resetAllScores;
+window.resetAllScores = resetAllScores;
 
 // נשאיר גם את onResetLocal למקרה גיבוי/ניקוי מקומי:
 window.onResetLocal = onResetLocal;
@@ -509,6 +510,7 @@ window.onResetLocal = onResetLocal;
   </script>
 </body>
 </html>
+
 
 
 
