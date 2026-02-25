@@ -94,6 +94,12 @@
       <div id="userBadge" class="user-badge" style="display:none"></div>
       <div style="display:flex;gap:10px">
         <button class="primary" onclick="showWinner()">הצג את המשפחה המנצחת 🏆</button>
+        
+!-- ⬇️ חדש: כפתור איפוס (מוסתר כברירת מחדל, יוצג עם ?admin=1 ב-URL) -->
+    <button id="resetBtn" class="ghost" style="display:none" onclick="resetAllScores()">
+      איפוס ניקוד (אדמין)
+    </button>
+
         <button class="ghost" onclick="toggleTotals()" title="הצג/הסתר מצטבר מתחת לכרטיס">הצג/הסתר ניקוד מצטבר</button>
       </div>
     </div>
@@ -138,7 +144,7 @@
    ***************/
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
-    getFirestore, collection, addDoc, getDocs, query, where
+    getFirestore, collection, addDoc, getDocs, query, where, deleteDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   // 👇 החליפי כאן בפרטי הפרויקט שלך:
@@ -229,7 +235,31 @@
     });
     return totals;
   }
+// ⬇️ 2.3 איפוס כל הדירוגים של האירוע ב-Firestore
+async function resetAllScores(){
+  const sure = confirm('לאשר מחיקת כל הדירוגים של האירוע? הפעולה בלתי הפיכה.');
+  if (!sure) return;
 
+  try{
+    const q = query(RATINGS_COL, where("eventId","==", EVENT_ID));
+    const snap = await getDocs(q);
+
+    let count = 0;
+    const deletions = [];
+    snap.forEach(d => {
+      deletions.push(deleteDoc(doc(db, "ratings", d.id)));
+      count++;
+    });
+    await Promise.all(deletions);
+
+    showToast(`נמחקו ${count} דירוגים מהאירוע`);
+    if (SHOW_TOTALS) await refreshTotalsUI();
+  }catch(err){
+    console.error(err);
+    alert('שגיאה במחיקת הדירוגים. בדקו הרשאות (Rules) ונסו שוב.');
+  }
+}
+window.resetAllScores = resetAllScores; // לחשיפה לבלחיצת הכפתור
   /***************
    * UI: רינדור משפחות
    ***************/
@@ -442,10 +472,43 @@
     renderUserBadge();
     renderFamilies();
   })();
+   
+async function resetAllScores(){
+  const sure = confirm('לאשר מחיקת כל הדירוגים של האירוע? הפעולה בלתי הפיכה.');
+  if (!sure) return;
 
+  try{
+    // נטען את כל המסמכים תחת הקולקציה "ratings" של האירוע הנוכחי
+    const q = query(RATINGS_COL, where("eventId","==", EVENT_ID));
+    const snap = await getDocs(q);
+
+    let count = 0;
+    const deletions = [];
+    snap.forEach(d => {
+      deletions.push(deleteDoc(doc(db, "ratings", d.id)));
+      count++;
+    });
+    await Promise.all(deletions);
+
+    showToast(`נמחקו ${count} דירוגים מהאירוע`);
+    if (SHOW_TOTALS) await refreshTotalsUI();
+  }catch(err){
+    console.error(err);
+    alert('שגיאה במחיקת הדירוגים. בדקו הרשאות (Rules) ונסו שוב.');
+  }
+}
+window.resetAllScores = resetAllScores; // נחשוף לגלובלי כי הכפתור קורא לזה
   // נשאיר גם את onResetLocal למקרה גיבוי/ניקוי מקומי:
   window.onResetLocal = onResetLocal;
    
+   // ⬇️ 2.2 מצב אדמין: לחשיפת כפתור האיפוס אם כתובת הדף כוללת ?admin=1
+(function showAdminIfNeeded(){
+  const params = new URLSearchParams(location.search);
+  if (params.get('admin') === '1') {
+    const btn = document.getElementById('resetBtn');
+    if (btn) btn.style.display = 'inline-flex';
+  }
+})();
 </script>
 
   <!-- ============================================================
@@ -464,5 +527,6 @@
   </script>
 </body>
 </html>
+
 
 
