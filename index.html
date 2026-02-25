@@ -470,9 +470,12 @@ async function resetAllScores(){
     alert('שגיאה במחיקת הדירוגים. בדקו הרשאות (Rules) ונסו שוב.');
   }
 }
-//נחשוף לגלובלי כי הכפתור קורא לזה
-  // נשאיר גם את onResetLocal למקרה גיבוי/ניקוי מקומי:
-  window.onResetLocal = onResetLocal;
+//נחשוף לגלובלי כי הכפתור קורא לזה  
+ndow.resetAllScores = resetAllScores;
+
+// נשאיר גם את onResetLocal למקרה גיבוי/ניקוי מקומי:
+window.onResetLocal = onResetLocal;
+
    
    // ⬇️ 2.2 מצב אדמין: לחשיפת כפתור האיפוס אם כתובת הדף כוללת ?admin=1
 (function showAdminIfNeeded(){
@@ -507,6 +510,7 @@ async function resetAllScores(){
   </script>
 </body>
 </html>
+
 
 
 
