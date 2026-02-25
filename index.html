@@ -132,238 +132,315 @@
   <!-- טוסט -->
   <div id="toast" class="toast" style="display:none"><div class="msg">נשמר!</div></div>
 
-  <script>
-    /***************
-     * נתונים בסיסיים
-     ***************/
-    const FAMILIES = [
-      { id: 'fam_cohen',   lastName: 'כהן',   displayName: 'משפחת כהן' },
-      { id: 'fam_levi',    lastName: 'לוי',   displayName: 'משפחת לוי' },
-      { id: 'fam_mizrahi', lastName: 'מזרחי', displayName: 'משפחת מזרחי' },
-      { id: 'fam_peretz',  lastName: 'פרץ',   displayName: 'משפחת פרץ' },
-      { id: 'fam_azulay',  lastName: 'אזולאי',displayName: 'משפחת אזולאי' }
-    ];
+ <script type="module">
+  /***************
+   * Firebase (גרסת דפדפן מודולרית)
+   ***************/
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getFirestore, collection, addDoc, getDocs, query, where
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-    const LS_KEYS = { USER: 'contest_user', RATINGS: 'contest_ratings' };
+  // 👇 החליפי כאן בפרטי הפרויקט שלך:
+  const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBQjqMwfmy4RfiAAxdPhf8Z9FsygSxOMY8",
+  authDomain: "purim-76a85.firebaseapp.com",
+  projectId: "purim-76a85",
+  storageBucket: "purim-76a85.firebasestorage.app",
+  messagingSenderId: "180198938338",
+  appId: "1:180198938338:web:c9e809108e84f9c583b0bb"
+};
+  
 
-    const $ = s => document.querySelector(s);
-    const $$ = s => document.querySelectorAll(s);
-    const norm = s => (s||'').toString().trim();
-    function sameName(a,b){ return norm(a) === norm(b); }
-    function isValidDataUrl(s){ return /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(s||''); }
+  // מזהה אירוע כדי להפריד בין אירועים שונים (שלא יתערבבו בעתיד)
+  const EVENT_ID = "purim-2026";
 
-    function showToast(text){
-      const el = $('#toast');
-      el.querySelector('.msg').textContent = text;
-      el.style.display = 'flex';
-      setTimeout(()=>{ el.style.display = 'none'; }, 1600);
+  const app = initializeApp(FIREBASE_CONFIG);
+  const db = getFirestore(app);
+  const RATINGS_COL = collection(db, "ratings");
+
+  /***************
+   * הנתונים הבסיסיים שלך (ללא שינוי)
+   ***************/
+  const FAMILIES = [
+    { id: 'fam_cohen',   lastName: 'כהן',   displayName: 'משפחת כהן' },
+    { id: 'fam_levi',    lastName: 'לוי',   displayName: 'משפחת לוי' },
+    { id: 'fam_mizrahi', lastName: 'מזרחי', displayName: 'משפחת מזרחי' },
+    { id: 'fam_peretz',  lastName: 'פרץ',   displayName: 'משפחת פרץ' },
+    { id: 'fam_azulay',  lastName: 'אזולאי',displayName: 'משפחת אזולאי' }
+  ];
+
+  const LS_KEYS = { USER: 'contest_user', RATINGS: 'contest_ratings' }; // נשאיר local כגיבוי
+
+  const $ = s => document.querySelector(s);
+  const $$ = s => document.querySelectorAll(s);
+  const norm = s => (s||'').toString().trim();
+  function sameName(a,b){ return norm(a) === norm(b); }
+  function isValidDataUrl(s){ return /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(s||''); }
+
+  function showToast(text){
+    const el = $('#toast');
+    el.querySelector('.msg').textContent = text;
+    el.style.display = 'flex';
+    setTimeout(()=>{ el.style.display = 'none'; }, 1600);
+  }
+
+  function getUserFromSession(){ try{ return JSON.parse(sessionStorage.getItem(LS_KEYS.USER)||'null'); }catch(_){ return null; } }
+  function onResetLocal(){ localStorage.removeItem(LS_KEYS.RATINGS); showToast('ניקית את הנתונים המקומיים'); }
+  function loadLocalRatings(){ try{ return JSON.parse(localStorage.getItem(LS_KEYS.RATINGS)||'[]'); }catch(_){ return []; } }
+  function saveLocalRating(r){ const a=loadLocalRatings(); a.push(r); localStorage.setItem(LS_KEYS.RATINGS, JSON.stringify(a)); }
+
+  let CURRENT_USER = null;
+  let CURRENT_RATED_FAMILY = null;
+  let SHOW_TOTALS = false;
+
+  /***************
+   * עזרי Firestore
+   ***************/
+  async function saveRemoteRating(rating){
+    // מניעת כפילויות קלילה (לא חובה): מפתח לוגי ל"זוג רֵייטר→משפחה"
+    // אפשר להחליט שמותר לדרג שוב – כרגע נשאיר בלי חסימה בצד השרת.
+    await addDoc(RATINGS_COL, rating);
+  }
+
+  async function fetchAllRatings(){
+    // נשלוף רק רייטינגים של האירוע הזה
+    const q = query(RATINGS_COL, where("eventId", "==", EVENT_ID));
+    const snap = await getDocs(q);
+    const items = [];
+    snap.forEach(doc => items.push(doc.data()));
+    return items;
+  }
+
+  async function fetchTotals(){
+    const ratings = await fetchAllRatings();
+    const totals = {};
+    ratings.forEach(r => {
+      const fid = r.ratedFamilyId;
+      if(!totals[fid]) totals[fid] = { sum:0, count:0 };
+      totals[fid].sum += Number(r.total)||0;
+      totals[fid].count += 1;
+    });
+    return totals;
+  }
+
+  /***************
+   * UI: רינדור משפחות
+   ***************/
+  function renderFamilies(){
+    const grid = $('#familiesGrid');
+    grid.innerHTML = '';
+
+    const withImages = FAMILIES.map(f => ({
+      ...f,
+      imageData: (window.IMAGE_DATA && window.IMAGE_DATA[f.id]) || ''
+    }));
+
+    const list = withImages.filter(f => !CURRENT_USER || !sameName(f.lastName, CURRENT_USER.familyName));
+
+    if (list.length === 0){
+      const empty = document.createElement('div');
+      empty.className = 'muted';
+      empty.textContent = 'אין משפחות להצגה (נראה שהרשימה כוללת רק את המשפחה שלך)';
+      grid.appendChild(empty);
+      return;
     }
 
-    function saveUserToSession(user){ try{ sessionStorage.setItem(LS_KEYS.USER, JSON.stringify(user)); }catch(_){} }
-    function getUserFromSession(){ try{ return JSON.parse(sessionStorage.getItem(LS_KEYS.USER)||'null'); }catch(_){ return null; } }
-    function onResetLocal(){ localStorage.removeItem(LS_KEYS.RATINGS); showToast('ניקית את הנתונים המקומיים'); }
-    function loadLocalRatings(){ try{ return JSON.parse(localStorage.getItem(LS_KEYS.RATINGS)||'[]'); }catch(_){ return []; } }
-    function saveLocalRating(r){ const a=loadLocalRatings(); a.push(r); localStorage.setItem(LS_KEYS.RATINGS, JSON.stringify(a)); }
+    list.forEach(f => {
+      const card = document.createElement('article');
+      card.className = 'card';
 
-    let CURRENT_USER = null;
-    let CURRENT_RATED_FAMILY = null;
-    let SHOW_TOTALS = false;
-
-    /***************
-     * רינדור כרטיסים – בלי innerHTML
-     ***************/
-    function renderFamilies(){
-      const grid = $('#familiesGrid');
-      grid.innerHTML = '';
-
-      const withImages = FAMILIES.map(f => ({
-        ...f,
-        imageData: (window.IMAGE_DATA && window.IMAGE_DATA[f.id]) || ''
-      }));
-
-      const list = withImages.filter(f => !CURRENT_USER || !sameName(f.lastName, CURRENT_USER.familyName));
-
-      if (list.length === 0){
-        const empty = document.createElement('div');
-        empty.className = 'muted';
-        empty.textContent = 'אין משפחות להצגה (נראה שהרשימה כוללת רק את המשפחה שלך)';
-        grid.appendChild(empty);
-        return;
+      if (isValidDataUrl(f.imageData)){
+        const img = document.createElement('img');
+        img.src = f.imageData;
+        img.alt = f.displayName;
+        img.addEventListener('click', () => openRatingModal(f));
+        card.appendChild(img);
+      } else {
+        const noimg = document.createElement('div');
+        noimg.className = 'no-image';
+        card.appendChild(noimg);
       }
 
-      list.forEach(f => {
-        const card = document.createElement('article');
-        card.className = 'card';
+      const content = document.createElement('div');
+      content.className = 'content';
 
-        // מדיה
-        if (isValidDataUrl(f.imageData)){
-          const img = document.createElement('img');
-          img.src = f.imageData;
-          img.alt = f.displayName;
-          img.addEventListener('click', () => openRatingModal(f));
-          card.appendChild(img);
-        } else {
-          const noimg = document.createElement('div');
-          noimg.className = 'no-image';
-          card.appendChild(noimg);
-        }
+      const nameEl = document.createElement('div');
+      nameEl.className = 'family-name';
+      nameEl.textContent = f.displayName;
+      content.appendChild(nameEl);
 
-        // תוכן
-        const content = document.createElement('div');
-        content.className = 'content';
+      const totalEl = document.createElement('div');
+      totalEl.className = 'muted';
+      totalEl.dataset.total = f.id;
+      totalEl.style.display = SHOW_TOTALS ? 'block' : 'none';
+      totalEl.textContent = 'ניקוד מצטבר: —';
+      content.appendChild(totalEl);
 
-        const nameEl = document.createElement('div');
-        nameEl.className = 'family-name';
-        nameEl.textContent = f.displayName;
-        content.appendChild(nameEl);
+      const btnWrap = document.createElement('div');
+      const btn = document.createElement('button');
+      btn.className = 'primary';
+      btn.style.width = '100%';
+      btn.textContent = 'דרגו';
+      btn.addEventListener('click', () => openRatingModal(f));
+      btnWrap.appendChild(btn);
+      content.appendChild(btnWrap);
 
-        const totalEl = document.createElement('div');
-        totalEl.className = 'muted';
-        totalEl.dataset.total = f.id;
-        totalEl.style.display = SHOW_TOTALS ? 'block' : 'none';
-        totalEl.textContent = 'ניקוד מצטבר: —';
-        content.appendChild(totalEl);
+      card.appendChild(content);
+      grid.appendChild(card);
+    });
 
-        const btnWrap = document.createElement('div');
-        const btn = document.createElement('button');
-        btn.className = 'primary';
-        btn.style.width = '100%';
-        btn.textContent = 'דרגו';
-        btn.addEventListener('click', () => openRatingModal(f));
-        btnWrap.appendChild(btn);
-        content.appendChild(btnWrap);
+    if (SHOW_TOTALS) refreshTotalsUI();
+  }
 
-        card.appendChild(content);
-        grid.appendChild(card);
-      });
+  function toggleTotals(){
+    SHOW_TOTALS = !SHOW_TOTALS;
+    $$('#familiesGrid [data-total]').forEach(el => el.style.display = SHOW_TOTALS ? 'block' : 'none');
+    if (SHOW_TOTALS) refreshTotalsUI();
+  }
+  window.toggleTotals = toggleTotals; // נחשוף לגלובל כי הכפתור קורא לזה
 
-      if (SHOW_TOTALS) refreshTotalsUI();
-    }
-
-    function toggleTotals(){
-      SHOW_TOTALS = !SHOW_TOTALS;
-      $$('#familiesGrid [data-total]').forEach(el => el.style.display = SHOW_TOTALS ? 'block' : 'none');
-      if (SHOW_TOTALS) refreshTotalsUI();
-    }
-
-    async function refreshTotalsUI(){
-      const totals = await computeTotals();
+  async function refreshTotalsUI(){
+    try{
+      const totals = await fetchTotals();
       $$('#familiesGrid [data-total]').forEach(el => {
         const fid = el.dataset.total;
         const t = totals[fid] || { sum:0, count:0 };
         const avg = t.count ? (t.sum/t.count).toFixed(2) : '—';
         el.textContent = `ניקוד מצטבר: ${t.sum} (מ-${t.count} דירוגים, ממוצע ${avg})`;
       });
+    }catch(e){
+      console.error(e);
+    }
+  }
+
+  /***************
+   * מודאל ניקוד
+   ***************/
+  function openRatingModal(family){
+    CURRENT_RATED_FAMILY = family;
+    $('#modalTitle').textContent = `ניקוד ל־${family.displayName}`;
+    $('#creativity').value = '';
+    $('#beauty').value = '';
+    $('#bonus').value = '';
+    $('#scoreError').style.display = 'none';
+    $('#ratingModal').classList.add('active');
+    $('#creativity').focus();
+  }
+  function closeRatingModal(){ $('#ratingModal').classList.remove('active'); CURRENT_RATED_FAMILY = null; }
+  function validateScore(v){ const n=Number(v); return Number.isInteger(n) && n>=1 && n<=5; }
+
+  async function submitScore(){
+    const err = $('#scoreError'); err.style.display='none';
+    if(!CURRENT_USER || !CURRENT_RATED_FAMILY){ err.textContent='שגיאה פנימית – נסו שוב.'; err.style.display='block'; return; }
+    if(sameName(CURRENT_RATED_FAMILY.lastName, CURRENT_USER.familyName)){ err.textContent='אי אפשר לדרג את המשפחה שלך.'; err.style.display='block'; return; }
+
+    const creativity = Number($('#creativity').value);
+    const beauty = Number($('#beauty').value);
+    const bonus = Number($('#bonus').value);
+    if (![creativity,beauty,bonus].every(validateScore)){ err.textContent='אנא הזינו ערכים שלמים בין 1 ל-5 בכל הקטגוריות.'; err.style.display='block'; return; }
+
+    const rating = {
+      eventId: EVENT_ID,
+      ratedFamilyId: CURRENT_RATED_FAMILY.id,
+      ratedFamilyLastName: CURRENT_RATED_FAMILY.lastName,
+      raterFirst: CURRENT_USER.firstName,
+      raterFamily: CURRENT_USER.familyName,
+      creativity, beauty, bonus,
+      total: creativity + beauty + bonus,
+      ts: Date.now()
+    };
+
+    try{
+      await saveRemoteRating(rating);    // 👉 נשמר בענן
+    }catch(e){
+      console.error(e);
+      // גיבוי: נשמור מקומית אם נפל האינטרנט
+      saveLocalRating({...rating, offline:true});
+      showToast('בלי לחץ – שמרתי מקומית ואנסה לסנכרן מאוחר יותר');
     }
 
-    /***************
-     * מודאל ניקוד
-     ***************/
-    function openRatingModal(family){
-      CURRENT_RATED_FAMILY = family;
-      $('#modalTitle').textContent = `ניקוד ל־${family.displayName}`;
-      $('#creativity').value = '';
-      $('#beauty').value = '';
-      $('#bonus').value = '';
-      $('#scoreError').style.display = 'none';
-      $('#ratingModal').classList.add('active');
-      $('#creativity').focus();
-    }
-    function closeRatingModal(){ $('#ratingModal').classList.remove('active'); CURRENT_RATED_FAMILY = null; }
-    function validateScore(v){ const n=Number(v); return Number.isInteger(n) && n>=1 && n<=5; }
+    closeRatingModal();
+    showToast('הניקוד נשמר! תודה 🌟');
+    if (SHOW_TOTALS) refreshTotalsUI();
+  }
 
-    function submitScore(){
-      const err = $('#scoreError'); err.style.display='none';
-      if(!CURRENT_USER || !CURRENT_RATED_FAMILY){ err.textContent='שגיאה פנימית – נסו שוב.'; err.style.display='block'; return; }
-      if(sameName(CURRENT_RATED_FAMILY.lastName, CURRENT_USER.familyName)){ err.textContent='אי אפשר לדרג את המשפחה שלך.'; err.style.display='block'; return; }
+  window.submitScore = submitScore;
+  window.closeRatingModal = closeRatingModal;
+  window.openRatingModal = openRatingModal;
 
-      const creativity = Number($('#creativity').value);
-      const beauty = Number($('#beauty').value);
-      const bonus = Number($('#bonus').value);
-      if (![creativity,beauty,bonus].every(validateScore)){ err.textContent='אנא הזינו ערכים שלמים בין 1 ל-5 בכל הקטגוריות.'; err.style.display='block'; return; }
+  /***************
+   * חישובי מצטבר ומנצחים – מהענן
+   ***************/
+  async function computeTotals(){
+    return await fetchTotals();
+  }
 
-      const rating = {
-        ratedFamilyId: CURRENT_RATED_FAMILY.id,
-        ratedFamilyLastName: CURRENT_RATED_FAMILY.lastName,
-        raterFirst: CURRENT_USER.firstName,
-        raterFamily: CURRENT_USER.familyName,
-        creativity, beauty, bonus,
-        total: creativity + beauty + bonus,
-        ts: Date.now()
-      };
-      const arr = loadLocalRatings(); arr.push(rating);
-      localStorage.setItem(LS_KEYS.RATINGS, JSON.stringify(arr));
-      closeRatingModal();
-      showToast('הניקוד נשמר! תודה 🌟');
-      if (SHOW_TOTALS) refreshTotalsUI();
-    }
+  function showWinner(){
+    computeTotals().then(totals => {
+      const entries = Object.entries(totals);
+      if(entries.length === 0){ alert('עדיין אין ניקוד. היו הראשונים לדרג!'); return; }
+      let max = -Infinity;
+      entries.forEach(([fid, obj]) => { if(obj.sum > max) max = obj.sum; });
+      const winners = entries.filter(([fid, obj]) => obj.sum === max).map(([fid]) => fid);
+      const winnerNames = winners.map(fid => (FAMILIES.find(f => f.id===fid)?.displayName || fid));
+      const lines = entries
+        .sort((a,b)=>b[1].sum - a[1].sum)
+        .map(([fid,{sum,count}])=>{
+          const name = FAMILIES.find(f=>f.id===fid)?.displayName || fid;
+          const avg = count ? (sum/count).toFixed(2) : '—';
+          return `• ${name}: ${sum} נק׳ (מ-${count} דירוגים, ממוצע ${avg})`;
+        }).join('\n');
+      alert(`🏆 המנצח/ים: ${winnerNames.join(', ')}\n\nדירוגים עד כה:\n${lines}`);
+    }).catch(err => {
+      console.error(err);
+      alert('שגיאה בשליפת הנתונים. נסו שוב בעוד רגע.');
+    });
+  }
+  window.showWinner = showWinner;
 
-    async function computeTotals(){
-      const ratings = loadLocalRatings();
-      const totals = {};
-      ratings.forEach(r => {
-        if(!totals[r.ratedFamilyId]) totals[r.ratedFamilyId] = { sum:0, count:0 };
-        totals[r.ratedFamilyId].sum += Number(r.total)||0;
-        totals[r.ratedFamilyId].count += 1;
-      });
-      return totals;
-    }
+  /***************
+   * כניסה
+   ***************/
+  function handleLoginSubmit(ev){
+    if (ev && ev.preventDefault) ev.preventDefault();
+    const firstName = norm($('#firstName').value);
+    const familyName = norm($('#familyName').value);
+    const err = $('#loginError'); err.style.display='none';
 
-    function showWinner(){
-      computeTotals().then(totals => {
-        const entries = Object.entries(totals);
-        if(entries.length === 0){ alert('עדיין אין ניקוד. היו הראשונים לדרג!'); return; }
-        let max = -Infinity;
-        entries.forEach(([fid, obj]) => { if(obj.sum > max) max = obj.sum; });
-        const winners = entries.filter(([fid, obj]) => obj.sum === max).map(([fid]) => fid);
-        const winnerNames = winners.map(fid => (FAMILIES.find(f => f.id===fid)?.displayName || fid));
-        const lines = entries
-          .sort((a,b)=>b[1].sum - a[1].sum)
-          .map(([fid,{sum,count}])=>{
-            const name = FAMILIES.find(f=>f.id===fid)?.displayName || fid;
-            const avg = count ? (sum/count).toFixed(2) : '—';
-            return `• ${name}: ${sum} נק׳ (מ-${count} דירוגים, ממוצע ${avg})`;
-          }).join('\n');
-        alert(`🏆 המנצח/ים: ${winnerNames.join(', ')}\n\nדירוגים עד כה:\n${lines}`);
-      });
-    }
+    if(!firstName || !familyName){ err.textContent='נא למלא שם פרטי ושם משפחה.'; err.style.display='block'; return false; }
 
-    /***************
-     * כניסה
-     ***************/
-    function handleLoginSubmit(ev){
-      if (ev && ev.preventDefault) ev.preventDefault();
-      const firstName = norm($('#firstName').value);
-      const familyName = norm($('#familyName').value);
-      const err = $('#loginError'); err.style.display='none';
+    const CURRENT = { firstName, familyName };
+    CURRENT_USER = CURRENT;
+    try { sessionStorage.setItem(LS_KEYS.USER, JSON.stringify(CURRENT)); } catch(_){}
+    $('#loginOverlay').style.display = 'none';
+    renderUserBadge();
+    renderFamilies();
+    return false;
+  }
+  window.handleLoginSubmit = handleLoginSubmit;
 
-      if(!firstName || !familyName){ err.textContent='נא למלא שם פרטי ושם משפחה.'; err.style.display='block'; return false; }
+  function renderUserBadge(){
+    const b = $('#userBadge');
+    if(!CURRENT_USER){ b.style.display='none'; return; }
+    b.style.display = 'inline-flex';
+    b.textContent = `מדורג/ת: ${CURRENT_USER.firstName} ${CURRENT_USER.familyName}`;
+  }
 
-      CURRENT_USER = { firstName, familyName };
-      try { sessionStorage.setItem(LS_KEYS.USER, JSON.stringify(CURRENT_USER)); } catch(_){}
+  (function init(){
+    const u = getUserFromSession();
+    if(u && u.firstName && u.familyName){
+      CURRENT_USER = u;
       $('#loginOverlay').style.display = 'none';
-      renderUserBadge();
-      renderFamilies();
-      return false;
     }
+    renderUserBadge();
+    renderFamilies();
+  })();
 
-    function renderUserBadge(){
-      const b = $('#userBadge');
-      if(!CURRENT_USER){ b.style.display='none'; return; }
-      b.style.display = 'inline-flex';
-      b.textContent = `מדורג/ת: ${CURRENT_USER.firstName} ${CURRENT_USER.familyName}`;
-    }
-
-    (function init(){
-      const u = getUserFromSession();
-      if(u && u.firstName && u.familyName){
-        CURRENT_USER = u;
-        $('#loginOverlay').style.display = 'none';
-      }
-      renderUserBadge();
-      renderFamilies();
-    })();
-  </script>
+  // נשאיר גם את onResetLocal למקרה גיבוי/ניקוי מקומי:
+  window.onResetLocal = onResetLocal;
+   
+</script>
 
   <!-- ============================================================
        הדביקי כאן את ה-Data URL (Base64) של התמונות, לפי ה-id של המשפחה
